@@ -5,6 +5,30 @@ open Argu
 // Learn more about F# at http://fsharp.org
 // See the 'F# Tutorial' project for more help.
 
+
+type Options = {
+    mutable Full: bool
+    mutable AllFiles: bool
+}
+
+let options = {
+    Full = false;
+    AllFiles = false
+}
+
+type CLIArguments =
+    | [<AltCommandLine("-f")>] Full
+    | [<AltCommandLine("-a")>] All
+
+with
+    interface IArgParserTemplate with
+        member s.Usage =
+            match s with
+            | Full _ -> "Show all conflicting lines"
+            | All _ -> "Check all files regardless of extension"
+    
+
+
 let rec visitor dir = 
     seq { yield! Directory.GetFiles(dir, "*")
           for subdir in Directory.GetDirectories(dir) do yield! visitor subdir}
@@ -54,7 +78,8 @@ let visualize path analysis =
     | Analysis.FullLinefeeds -> printfn "N %s" path
     | Analysis.SomeLinefeeds(cont, offsets) -> 
         printfn "N- (%d) %s" offsets.Length path
-        if offsets.Length < 10 then 
+        let maxlen = if options.Full then 1000 else 10
+        if offsets.Length < maxlen then 
             offsets |> Seq.iter (fun p -> print_line (get_string cont (line_at cont p)))
         //for p in offsets do
         //    printf "  %s" (get_string cont (line_at cont p))
@@ -78,16 +103,14 @@ type FileType =
     | Unknown
 
 let get_file_type path = 
-    let ext = Path.GetExtension path
-    match ext.ToLower() with
-    | ".cs" | ".py" -> Source
-    | _ -> Unknown
-
-
+    if options.AllFiles then Source else
+        let ext = Path.GetExtension path
+        match ext.ToLower() with
+        | ".cs" | ".py" | ".fs" | ".ts" | ".js"-> Source
+        | _ -> Unknown
 
 // return number of failures
 let check_file path = 
-
     match get_file_type path with 
     | Source ->
         let cont = File.ReadAllBytes path 
@@ -117,33 +140,23 @@ let analyze_tree p =
     for p in paths do 
         let analysis = check_file p
         visualize p analysis
-
-type Arguments = 
-    | Full
-    
-
-let usage() = 
-    printfn "usage: sanefiles PATH"
-
-type CLIArguments =
-    |  [<AltCommandLine("-f")>] Full
-with
-    interface IArgParserTemplate with
-        member s.Usage =
-            match s with
-            | Full _ -> "Show all conflicting lines"
     
 [<EntryPoint>]
 let main argv =
     //funit.run_tests()
     let parser = ArgumentParser.Create<CLIArguments>()
-    let results = parser.ParseCommandLine(ignoreUnrecognized = true)
+    let parsed = parser.ParseCommandLine(ignoreUnrecognized = true)
     
 
-    match argv with 
-    | [||] -> print_line (parser.Usage())
-    | [|pth|] -> analyze_tree pth
-    | _ -> print_line (parser.Usage())
+    for p in parsed.GetAllResults() do 
+        match p with 
+        | Full -> options.Full <- true
+        | All -> options.AllFiles <- true
+   
+    match parsed.UnrecognizedCliParams with 
+    | [] -> printfn "%s" (parser.PrintUsage())
+    | [pth] -> analyze_tree pth
+    | _ -> printfn "%s" (parser.PrintUsage())
 
         
     0 // return an integer exit code
