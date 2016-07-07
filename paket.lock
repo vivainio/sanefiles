@@ -1,0 +1,4 @@
+FRAMEWORK: NET40, NET45
+NUGET
+  remote: https://www.nuget.org/api/v2
+    Argu (3.0.1)
