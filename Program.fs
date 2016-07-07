@@ -1,6 +1,7 @@
 ﻿open System.IO
 open System
 open Argu
+open QuiteFake.FileSystemHelper
 
 // Learn more about F# at http://fsharp.org
 // See the 'F# Tutorial' project for more help.
@@ -29,9 +30,12 @@ with
     
 
 
-let rec visitor dir = 
-    seq { yield! Directory.GetFiles(dir, "*")
-          for subdir in Directory.GetDirectories(dir) do yield! visitor subdir}
+let rec walk_path dir = 
+    if isFile dir then seq [dir] else 
+    seq {
+        yield! Directory.GetFiles(dir, "*")
+        for subdir in Directory.GetDirectories(dir) do yield! walk_path subdir
+    }
 
 
 let find_bytes (haystack: byte[]) (needle: byte) = 
@@ -106,7 +110,7 @@ let get_file_type path =
     if options.AllFiles then Source else
         let ext = Path.GetExtension path
         match ext.ToLower() with
-        | ".cs" | ".py" | ".fs" | ".ts" | ".js"-> Source
+        | ".cs" | ".py" | ".fs" | ".ts" -> Source
         | _ -> Unknown
 
 // return number of failures
@@ -136,7 +140,7 @@ let test_line_at() =
 funit.add_test "line_at" test_line_at
 
 let analyze_tree p = 
-    let paths = visitor p
+    let paths = walk_path p
     for p in paths do 
         let analysis = check_file p
         visualize p analysis
@@ -146,7 +150,6 @@ let main argv =
     //funit.run_tests()
     let parser = ArgumentParser.Create<CLIArguments>()
     let parsed = parser.ParseCommandLine(ignoreUnrecognized = true)
-    
 
     for p in parsed.GetAllResults() do 
         match p with 
